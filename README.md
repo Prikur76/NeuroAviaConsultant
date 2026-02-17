@@ -64,7 +64,7 @@ uvicorn main:app --reload
 
 После запуска проект будет доступен по адресу: [http://127.0.0.1:8000](http://127.0.0.1:8000)
 
-![img](img\main_window.jpg)
+![img](img/main_window.jpg)
 
 ## 📌 Основные эндпоинты
 
@@ -92,7 +92,8 @@ uvicorn main:app --reload
 После запуска перейдите по адресу:
 👉 [http://127.0.0.1:8000/docs](http://127.0.0.1:8000/docs)
 
-![img](img\swagger_screenshot.jpg)
+![img](img/swagger_screenshot.jpg)
+
 ---
 
 ### Лицензия: [MIT License](LICENSE)
