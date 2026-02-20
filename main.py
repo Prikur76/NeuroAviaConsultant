@@ -1,16 +1,16 @@
-import os
 import re
-import httpx
-from datetime import datetime
 from contextlib import asynccontextmanager
+from datetime import datetime
+
+import httpx
 from environs import Env
 from fastapi import FastAPI, HTTPException
 from fastapi.responses import HTMLResponse
-from pydantic import BaseModel
-from openai import OpenAI
-from langchain_openai import OpenAIEmbeddings
 from langchain_community.vectorstores import FAISS
+from langchain_openai import OpenAIEmbeddings
 from langchain_text_splitters import RecursiveCharacterTextSplitter
+from openai import OpenAI
+from pydantic import BaseModel
 
 env = Env()
 env.read_env()
@@ -29,18 +29,22 @@ vector_db = None
 # --- Вспомогательные функции ---
 def load_document_text(url: str) -> str:
     """Извлекает текст из Google Docs с поддержкой редиректов."""
-    match = re.search(r'/d/([a-zA-Z0-9-_]+)', url)
-    if not match:
-        raise ValueError("Некорректная ссылка на Google Doc")
-    
-    doc_id = match.group(1)
-    export_url = f"https://docs.google.com/document/d/{doc_id}/export?format=txt"
-    
-    # Исправление: добавляем follow_redirects=True
-    with httpx.Client(follow_redirects=True) as client:
-        response = client.get(export_url)
-        response.raise_for_status()
-        return response.text
+    try:
+        match = re.search(r'/d/([a-zA-Z0-9-_]+)', url)
+        if not match:
+            raise ValueError("Некорректная ссылка на Google Doc")
+        
+        doc_id = match.group(1)
+        export_url = f"https://docs.google.com/document/d/{doc_id}/export?format=txt"
+        
+        with httpx.Client(follow_redirects=True) as client:
+            response = client.get(export_url)
+            response.raise_for_status()
+            return response.text
+    except httpx.RequestError as e:
+        raise RuntimeError(f"Ошибка при запросе к Google Docs: {e}")
+    except Exception as e:
+        raise RuntimeError(f"Неизвестная ошибка: {e}")
 
 
 # Описываем логику запуска и завершения
@@ -48,24 +52,27 @@ def load_document_text(url: str) -> str:
 async def lifespan(app: FastAPI):
     # --- [STARTUP] Код при запуске ---
     global vector_db
-    doc_url = "https://docs.google.com/document/d/11MU3SnVbwL_rM-5fIC14Lc3XnbAV4rY1Zd_kpcMuH4Y"    
+    doc_url = "https://docs.google.com/document/d/11MU3SnVbwL_rM-5fIC14Lc3XnbAV4rY1Zd_kpcMuH4Y"
     print("🚀 Загрузка базы знаний...")
     try:
         raw_text = load_document_text(doc_url)
         splitter = RecursiveCharacterTextSplitter(chunk_size=1000, chunk_overlap=200)
-        source_chunks = splitter.create_documents([raw_text])        
-        embeddings = OpenAIEmbeddings(api_key=API_KEY, base_url=BASE_URL)
+        source_chunks = splitter.create_documents([raw_text])
+        from pydantic import SecretStr
+        embeddings = OpenAIEmbeddings(api_key=SecretStr(API_KEY), base_url=BASE_URL)
         vector_db = FAISS.from_documents(source_chunks, embeddings)
         print("✅ База знаний успешно загружена и проиндексирована.")
+    except httpx.RequestError as e:
+        print(f"❌ Ошибка сети при инициализации базы знаний: {e}")
     except Exception as e:
-        print(f"❌ Ошибка при инициализации базы знаний: {e}")
+        print(f"❌ Неизвестная ошибка при инициализации базы знаний: {e}")
     
     yield  # Здесь приложение начинает принимать запросы
     
     # --- [SHUTDOWN] Код при выключении ---
     print("🛑 Завершение работы приложения...")
     if vector_db:
-        # В случае с FAISS в памяти очистка обычно не требуется, 
+        # В случае с FAISS в памяти очистка обычно не требуется,
         # но здесь можно закрывать соединения с внешними БД.
         vector_db = None
     print("✅ Работа приложения завершена.")
